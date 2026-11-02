@@ -1,0 +1,117 @@
+{
+  "expo": {
+    "name": "Hours Planner",
+    "slug": "hours-planner",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "backgroundColor": "#070B16",
+    "android": {
+      "package": "com.hoursplanner.app",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "permissions": [
+        "USE_EXACT_ALARM",
+        "SCHEDULE_EXACT_ALARM",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_BACKGROUND_LOCATION",
+        "android.permission.RECEIVE_BOOT_COMPLETED",
+        "android.permission.RECORD_AUDIO",
+        "USE_EXACT_ALARM",
+        "SCHEDULE_EXACT_ALARM",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_BACKGROUND_LOCATION",
+        "android.permission.RECEIVE_BOOT_COMPLETED",
+        "android.permission.RECORD_AUDIO"
+      ],
+      "blockedPermissions": [
+        "android.permission.WRITE_CALENDAR",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.SYSTEM_ALERT_WINDOW",
+        "android.permission.WRITE_CALENDAR",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.SYSTEM_ALERT_WINDOW"
+      ]
+    },
+    "plugins": [
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/notification-icon.png",
+          "color": "#7C5CFF",
+          "sounds": [
+            "./assets/alarm.wav"
+          ]
+        }
+      ],
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 200,
+          "backgroundColor": "#070B16",
+          "resizeMode": "contain"
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "isAndroidBackgroundLocationEnabled": true,
+          "isAndroidForegroundServiceEnabled": false
+        }
+      ],
+      [
+        "expo-speech-recognition",
+        {
+          "microphonePermission": "Hours Planner listens only while you tap Speak, to type your workload.",
+          "speechRecognitionPermission": "Hours Planner turns your voice into the workload text."
+        }
+      ],
+      [
+        "react-native-android-widget",
+        {
+          "widgets": [
+            {
+              "name": "HoursPlanner",
+              "label": "Hours Planner",
+              "description": "Today's hours, the month so far and a check in button",
+              "minWidth": "250dp",
+              "minHeight": "110dp",
+              "targetCellWidth": 4,
+              "targetCellHeight": 2,
+              "resizeMode": "horizontal|vertical",
+              "updatePeriodMillis": 1800000,
+              "previewImage": "./assets/widget-preview.png"
+            }
+          ]
+        }
+      ]
+    ],
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "userInterfaceStyle": "automatic",
+    "extra": {
+      "eas": {
+        "projectId": "85bc86e4-dc07-43f7-b434-498c362d534a"
+      }
+    },
+    "owner": "haris_majeed",
+    "updates": {
+      "url": "https://u.expo.dev/85bc86e4-dc07-43f7-b434-498c362d534a"
+    },
+    "ios": {
+      "infoPlist": {
+        "NSSpeechRecognitionUsageDescription": "Hours Planner turns your voice into the workload text.",
+        "NSMicrophoneUsageDescription": "Hours Planner listens only while you tap Speak, to type your workload."
+      }
+    }
+  }
+}

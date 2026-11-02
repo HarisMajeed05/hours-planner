@@ -1,0 +1,36 @@
+{
+  "name": "hours-planner",
+  "version": "1.0.0",
+  "main": "index.js",
+  "private": true,
+  "scripts": {
+    "start": "expo start",
+    "build:apk": "npx eas-cli build -p android --profile preview",
+    "update": "npx eas-cli update --channel preview --environment preview"
+  },
+  "dependencies": {
+    "@expo-google-fonts/inter": "^0.4.2",
+    "@react-native-async-storage/async-storage": "2.2.0",
+    "expo": "~58.0.22",
+    "expo-calendar": "~58.0.6",
+    "expo-font": "~58.0.11",
+    "expo-haptics": "~58.0.7",
+    "expo-linear-gradient": "~58.0.3",
+    "expo-local-authentication": "~58.0.2",
+    "expo-location": "~58.0.20",
+    "expo-notifications": "~58.1.7",
+    "expo-secure-store": "~58.0.2",
+    "expo-speech-recognition": "58.0.1",
+    "expo-splash-screen": "~58.0.12",
+    "expo-status-bar": "~58.0.4",
+    "expo-system-ui": "~58.0.7",
+    "expo-task-manager": "~58.0.13",
+    "expo-updates": "~58.0.20",
+    "lucide-react-native": "^1.66.0",
+    "react": "19.3.0",
+    "react-native": "0.88.1",
+    "react-native-android-widget": "0.26.0",
+    "react-native-safe-area-context": "~5.10.1",
+    "react-native-svg": "15.16.0"
+  }
+}
