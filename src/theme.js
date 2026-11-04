@@ -11,6 +11,8 @@ const dark = {
   brand: '#8B7BFF', brand2: '#22D3EE', onBrand: '#FFFFFF',
   good: '#34D399', warn: '#FBBF24', bad: '#FB7185', info: '#60A5FA', scrim: '#000000B0',
   grad: ['#5B3DF5', '#14B8E6'],
+  // glass surfaces sit on the aurora background, edge is the 1px lit border
+  glass: 'rgba(17,26,54,0.72)', glassStrong: 'rgba(13,20,44,0.96)', edge: ['rgba(255,255,255,0.24)', 'rgba(255,255,255,0.04)'], aurora: 0.5,
 };
 const light = {
   bg: '#F2F4FB', bg2: '#E6EAF7', surface: '#FFFFFF', surfaceHi: '#F5F6FC', border: '#E1E6F4',
@@ -18,6 +20,7 @@ const light = {
   brand: '#5B3DF5', brand2: '#0891B2', onBrand: '#FFFFFF',
   good: '#059669', warn: '#B45309', bad: '#E11D48', info: '#2563EB', scrim: '#0B102099',
   grad: ['#5B3DF5', '#14B8E6'],
+  glass: 'rgba(255,255,255,0.78)', glassStrong: 'rgba(255,255,255,0.97)', edge: ['rgba(255,255,255,1)', 'rgba(184,192,228,0.6)'], aurora: 0.3,
 };
 
 // hero gradients that follow the state of the day
@@ -50,15 +53,15 @@ export function ThemeProvider({ mode, children }) {
 }
 
 const V = {
-  display: { s: 34, l: 40, w: 800 },
-  h1: { s: 26, l: 32, w: 800 },
-  h2: { s: 20, l: 26, w: 700 },
+  display: { s: 34, l: 40, w: 800, ls: -0.8 },
+  h1: { s: 26, l: 32, w: 800, ls: -0.5 },
+  h2: { s: 20, l: 26, w: 700, ls: -0.2 },
   title: { s: 16, l: 22, w: 600 },
   body: { s: 15, l: 22, w: 400 },
   small: { s: 13, l: 18, w: 500 },
   caption: { s: 11, l: 14, w: 700, up: true },
-  num: { s: 44, l: 50, w: 800, tab: true },
-  numSm: { s: 20, l: 26, w: 700, tab: true },
+  num: { s: 44, l: 50, w: 800, tab: true, ls: -1.2 },
+  numSm: { s: 20, l: 26, w: 700, tab: true, ls: -0.4 },
 };
 
 // color is a theme token (dim, faint, brand, good...) or any hex
@@ -77,7 +80,7 @@ export function Txt({ v = 'body', color, w, align, style, children, ...rest }) {
           color: color ? (c[color] ?? color) : c.text,
           textAlign: align,
         },
-        t.up ? { textTransform: 'uppercase', letterSpacing: 0.9 } : null,
+        t.up ? { textTransform: 'uppercase', letterSpacing: 0.9 } : t.ls ? { letterSpacing: t.ls } : null,
         t.tab ? { fontVariant: ['tabular-nums'] } : null,
         style,
       ]}

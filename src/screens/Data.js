@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import { Alert, Pressable, Share, View } from 'react-native';
 import { parseHrm } from '../groq';
 import { dateKey, fmtH, fmtTime, parseBackup, toCsv, validateImport } from '../logic';
+import { syncNow } from '../account';
 import { mutate } from '../store';
 import { Btn, Card, Field, Icon, Notice, Pill, Screen, Txt, useTheme } from '../ui';
 
@@ -39,6 +40,7 @@ export default function DataTools({ onClose, days, settings }) {
           style: 'destructive',
           onPress: async () => {
             await mutate((st) => ({ ...st, days: back }));
+            syncNow({ replace: true }).catch(() => {}); // the cloud copy becomes the restored one too
             setRestoreText('');
             setMsg(`Restored ${n} days.`);
           },

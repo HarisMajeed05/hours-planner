@@ -1,11 +1,11 @@
 // the component kit: cards, buttons, fields, rows, the ring, the floating tab bar, bottom sheets and the day editor
-import React, { useEffect, useRef, useState } from 'react';
-import { Animated, Keyboard, KeyboardAvoidingView, Modal, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Animated, Easing, Image, Keyboard, KeyboardAvoidingView, Modal, PanResponder, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Svg, { Circle, Defs, Stop, LinearGradient as SvgGradient } from 'react-native-svg';
-import { Hero } from './art';
+import Svg, { Circle, Defs, RadialGradient, Stop, LinearGradient as SvgGradient } from 'react-native-svg';
+import { Brand } from './art';
 import { Icon } from './icons';
 import { TYPES, at, fmtMin, minOfDay, parseHM, parseKey, sessionsOf, typeOf } from './logic';
 import { Txt, tint, useTheme } from './theme';
@@ -30,24 +30,85 @@ export function useKeyboard() {
 
 // ---------- layout ----------
 
-// a screen with the soft background gradient and room for the floating tab bar
-export function Screen({ children, scroll = true, contentStyle }) {
+// slow drifting colour behind everything, the glass cards sit on top of it
+function Orb({ color, size, x, y, dx, dy, dur, alpha }) {
+  const t = useRef(new Animated.Value(0)).current;
+  const id = useRef(`orb${Math.random().toString(36).slice(2, 8)}`).current;
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(t, { toValue: 1, duration: dur, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+        Animated.timing(t, { toValue: 0, duration: dur, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
+  }, []);
+  return (
+    <Animated.View
+      pointerEvents="none"
+      style={{ position: 'absolute', left: x, top: y, width: size, height: size, transform: [{ translateX: t.interpolate({ inputRange: [0, 1], outputRange: [0, dx] }) }, { translateY: t.interpolate({ inputRange: [0, 1], outputRange: [0, dy] }) }] }}
+    >
+      <Svg width={size} height={size}>
+        <Defs>
+          <RadialGradient id={id} cx="50%" cy="50%" r="50%">
+            <Stop offset="0%" stopColor={color} stopOpacity={alpha} />
+            <Stop offset="100%" stopColor={color} stopOpacity="0" />
+          </RadialGradient>
+        </Defs>
+        <Circle cx={size / 2} cy={size / 2} r={size / 2} fill={`url(#${id})`} />
+      </Svg>
+    </Animated.View>
+  );
+}
+
+export function Aurora() {
+  const { c } = useTheme();
+  return (
+    <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+      <Orb color={c.grad[0]} size={420} x={-150} y={-120} dx={90} dy={70} dur={9000} alpha={c.aurora} />
+      <Orb color={c.grad[1]} size={380} x={140} y={260} dx={-110} dy={90} dur={12000} alpha={c.aurora * 0.8} />
+      <Orb color="#E879F9" size={340} x={-120} y={560} dx={100} dy={-80} dur={15000} alpha={c.aurora * 0.55} />
+    </View>
+  );
+}
+
+// a screen with the aurora, and optionally a large title that collapses into a bar when you scroll
+export function Screen({ children, scroll = true, title, sub, right, contentStyle }) {
   const { c } = useTheme();
   const insets = useSafeAreaInsets();
+  const y = useRef(new Animated.Value(0)).current;
   return (
     <View style={{ flex: 1 }}>
       <LinearGradient colors={[c.bg, c.bg2]} style={StyleSheet.absoluteFill} />
+      <Aurora />
       {scroll ? (
-        <ScrollView
+        <Animated.ScrollView
+          onScroll={Animated.event([{ nativeEvent: { contentOffset: { y } } }], { useNativeDriver: true })}
+          scrollEventThrottle={16}
           contentContainerStyle={[{ padding: 18, paddingTop: insets.top + 14, paddingBottom: 130 }, contentStyle]}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
+          {title ? (
+            <Animated.View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 18, opacity: y.interpolate({ inputRange: [0, 70], outputRange: [1, 0], extrapolate: 'clamp' }), transform: [{ translateY: y.interpolate({ inputRange: [0, 90], outputRange: [0, -12], extrapolate: 'clamp' }) }] }}>
+              <View style={{ flex: 1, paddingRight: 12 }}>
+                <Txt v="display" style={{ fontSize: 32 }}>{title}</Txt>
+                {sub ? <Txt v="small" color="dim" style={{ marginTop: 2 }}>{sub}</Txt> : null}
+              </View>
+              {right}
+            </Animated.View>
+          ) : null}
           {children}
-        </ScrollView>
+        </Animated.ScrollView>
       ) : (
         <View style={[{ flex: 1, paddingTop: insets.top + 14 }, contentStyle]}>{children}</View>
       )}
+      {title && scroll ? (
+        <Animated.View pointerEvents="none" style={{ position: 'absolute', left: 0, right: 0, top: 0, height: insets.top + 54, paddingTop: insets.top, alignItems: 'center', justifyContent: 'center', backgroundColor: `${c.bg}F0`, borderBottomWidth: 1, borderBottomColor: c.border, opacity: y.interpolate({ inputRange: [50, 90], outputRange: [0, 1], extrapolate: 'clamp' }) }}>
+          <Txt v="title">{title}</Txt>
+        </Animated.View>
+      ) : null}
     </View>
   );
 }
@@ -73,15 +134,32 @@ export function Section({ title, right, style }) {
   );
 }
 
+// a pane of glass: translucent surface, a 1px lit edge, soft shadow in the light theme
+export function Glass({ children, style, radius = 24, pad = 16, glow }) {
+  const { c, dark, shadow } = useTheme();
+  return (
+    <View style={[{ borderRadius: radius, marginBottom: 12, backgroundColor: dark ? 'transparent' : c.surface }, shadow, glow && { shadowColor: c.brand, shadowOpacity: 0.4, shadowRadius: 26, shadowOffset: { width: 0, height: 12 }, elevation: 12 }, style]}>
+      <LinearGradient colors={c.edge} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ borderRadius: radius, padding: 1, flexGrow: 1 }}>
+        <View style={{ borderRadius: radius - 1, backgroundColor: c.glass, padding: pad, flexGrow: 1 }}>{children}</View>
+      </LinearGradient>
+    </View>
+  );
+}
+
 export function Card({ children, style, pad = 16, onPress }) {
-  const { c, shadow } = useTheme();
-  const base = [{ backgroundColor: c.surface, borderRadius: 22, padding: pad, borderWidth: 1, borderColor: c.border, marginBottom: 12 }, shadow, style];
-  return onPress ? (
-    <Pressable onPress={onPress} style={base}>
+  const scale = useRef(new Animated.Value(1)).current;
+  const to = (v) => Animated.spring(scale, { toValue: v, speed: 40, bounciness: 0, useNativeDriver: true }).start();
+  const body = (
+    <Glass pad={pad} style={style}>
       {children}
+    </Glass>
+  );
+  return onPress ? (
+    <Pressable onPress={onPress} onPressIn={() => to(0.98)} onPressOut={() => to(1)}>
+      <Animated.View style={{ transform: [{ scale }] }}>{body}</Animated.View>
     </Pressable>
   ) : (
-    <View style={base}>{children}</View>
+    body
   );
 }
 
@@ -94,6 +172,15 @@ export function FadeIn({ delay = 0, children, style }) {
   return (
     <Animated.View style={[{ opacity: v, transform: [{ translateY: v.interpolate({ inputRange: [0, 1], outputRange: [14, 0] }) }] }, style]}>{children}</Animated.View>
   );
+}
+
+// fades a whole screen in, used when you switch tabs. opacity only so the background never shifts
+export function Crossfade({ children }) {
+  const v = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.timing(v, { toValue: 1, duration: 240, useNativeDriver: true }).start();
+  }, []);
+  return <Animated.View style={{ flex: 1, opacity: v }}>{children}</Animated.View>;
 }
 
 // ---------- controls ----------
@@ -226,17 +313,17 @@ export function Row({ icon, tone = 'brand', title, sub, right, onPress, last }) 
 }
 
 export function Stat({ icon, label, value, sub, tone = 'brand' }) {
-  const { c, shadow } = useTheme();
+  const { c } = useTheme();
   const col = c[tone] ?? tone;
   return (
-    <View style={[{ flex: 1, backgroundColor: c.surface, borderRadius: 20, padding: 14, borderWidth: 1, borderColor: c.border }, shadow]}>
-      <View style={{ width: 32, height: 32, borderRadius: 10, backgroundColor: tint(col, 0.14), alignItems: 'center', justifyContent: 'center', marginBottom: 10 }}>
+    <Glass radius={20} pad={14} style={{ flex: 1, marginBottom: 0 }}>
+      <View style={{ width: 32, height: 32, borderRadius: 10, backgroundColor: tint(col, 0.16), alignItems: 'center', justifyContent: 'center', marginBottom: 10 }}>
         <Icon name={icon} size={17} color={col} />
       </View>
       <Txt v="small" color="dim" numberOfLines={1}>{label}</Txt>
       <Txt v="numSm" numberOfLines={1} adjustsFontSizeToFit style={{ marginTop: 2 }}>{value}</Txt>
       {sub ? <Txt v="small" color="faint" numberOfLines={2} style={{ marginTop: 2, fontSize: 12, lineHeight: 15 }}>{sub}</Txt> : null}
-    </View>
+    </Glass>
   );
 }
 
@@ -302,19 +389,116 @@ export function Ring({ value, max, size = 200, stroke = 16, colors, track, child
   );
 }
 
-export function Avatar({ name, size = 44 }) {
+// gradient styles to pick from when there is no photo
+export const AVATAR_PRESETS = [
+  ['#5B3DF5', '#14B8E6'],
+  ['#F43F5E', '#FB923C'],
+  ['#10B981', '#22D3EE'],
+  ['#F59E0B', '#EF4444'],
+  ['#8B5CF6', '#EC4899'],
+  ['#0EA5E9', '#6366F1'],
+];
+
+// avatar is { type: 'photo' | 'url' | 'preset', ... } from the settings, a photo shows as is, a style shows my first letter
+export function Avatar({ name, size = 44, avatar }) {
   const { c } = useTheme();
+  if (avatar?.type === 'photo' || avatar?.type === 'url') {
+    return <Image source={{ uri: avatar.uri ?? avatar.url }} style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: c.border }} />;
+  }
   const letter = (name || '?').trim()[0]?.toUpperCase() ?? '?';
+  const colors = avatar?.type === 'preset' ? AVATAR_PRESETS[avatar.id % AVATAR_PRESETS.length] : c.grad;
   return (
-    <LinearGradient colors={c.grad} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ width: size, height: size, borderRadius: size / 2, alignItems: 'center', justifyContent: 'center' }}>
+    <LinearGradient colors={colors} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ width: size, height: size, borderRadius: size / 2, alignItems: 'center', justifyContent: 'center' }}>
       <Txt v="title" color="#FFFFFF" style={{ fontSize: size * 0.4 }}>{letter}</Txt>
     </LinearGradient>
   );
 }
 
+// numbers that roll up to their value instead of jumping
+export function CountUp({ value, format = (x) => String(Math.round(x)), v = 'num', ...txt }) {
+  const [shown, setShown] = useState(0);
+  const a = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    const id = a.addListener(({ value: x }) => setShown(x));
+    Animated.timing(a, { toValue: value, duration: 900, easing: Easing.out(Easing.cubic), useNativeDriver: false }).start();
+    return () => a.removeListener(id);
+  }, [value]);
+  return (
+    <Txt v={v} {...txt}>
+      {format(shown)}
+    </Txt>
+  );
+}
+
+// slide to confirm. harder to trigger by accident than a tap, and it gives a tick of haptics on the way
+export function SlideButton({ label, icon, onComplete, danger }) {
+  const [w, setW] = useState(0);
+  const x = useRef(new Animated.Value(0)).current;
+  const KNOB = 52;
+  const max = Math.max(0, w - KNOB - 12);
+  const pan = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => true,
+        onMoveShouldSetPanResponderCapture: () => true,
+        onPanResponderTerminationRequest: () => false,
+        onPanResponderGrant: () => Haptics.selectionAsync(),
+        onPanResponderMove: (_, g) => x.setValue(Math.min(max, Math.max(0, g.dx))),
+        onPanResponderRelease: (_, g) => {
+          if (max > 0 && g.dx >= max * 0.75) {
+            Animated.timing(x, { toValue: max, duration: 120, useNativeDriver: false }).start(() => {
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              onComplete();
+              setTimeout(() => Animated.spring(x, { toValue: 0, useNativeDriver: false }).start(), 700);
+            });
+          } else {
+            Animated.spring(x, { toValue: 0, useNativeDriver: false }).start();
+          }
+        },
+      }),
+    [max, onComplete]
+  );
+  return (
+    <View
+      accessible
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityActions={[{ name: 'activate' }]}
+      onAccessibilityAction={() => onComplete()}
+      onLayout={(e) => setW(e.nativeEvent.layout.width)}
+      style={{ height: 64, borderRadius: 32, backgroundColor: 'rgba(255,255,255,0.22)', justifyContent: 'center', overflow: 'hidden' }}
+    >
+      <Animated.View style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: Animated.add(x, KNOB + 12), borderRadius: 32, backgroundColor: 'rgba(255,255,255,0.28)' }} />
+      <Animated.View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingLeft: KNOB, opacity: x.interpolate({ inputRange: [0, Math.max(1, max * 0.6)], outputRange: [1, 0], extrapolate: 'clamp' }) }}>
+        <Txt v="title" color="#FFFFFF">{label}</Txt>
+        <Icon name="chevronR" size={18} color="rgba(255,255,255,0.9)" style={{ marginLeft: 6 }} />
+        <Icon name="chevronR" size={18} color="rgba(255,255,255,0.5)" style={{ marginLeft: -12 }} />
+      </Animated.View>
+      <Animated.View {...pan.panHandlers} style={{ position: 'absolute', left: 6, top: 6, width: KNOB, height: KNOB, borderRadius: KNOB / 2, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center', transform: [{ translateX: x }] }}>
+        <Icon name={icon} size={22} color={danger ? '#BE123C' : '#3B2BB5'} />
+      </Animated.View>
+    </View>
+  );
+}
+
 // ---------- navigation ----------
 
-// floating bar with a pill that slides under the active tab. it hides while the keyboard is open
+// floating glass bar with a pill that slides under the active tab. it hides while the keyboard is open
+function TabItem({ tab, on, onPress }) {
+  const k = useRef(new Animated.Value(on ? 1 : 0)).current;
+  useEffect(() => {
+    Animated.spring(k, { toValue: on ? 1 : 0, speed: 20, bounciness: 10, useNativeDriver: true }).start();
+  }, [on]);
+  return (
+    <Pressable onPress={onPress} style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+      <Animated.View style={{ transform: [{ scale: k.interpolate({ inputRange: [0, 1], outputRange: [1, 1.12] }) }, { translateY: k.interpolate({ inputRange: [0, 1], outputRange: [0, -1] }) }] }}>
+        <Icon name={tab.icon} size={22} color={on ? 'brand' : 'faint'} stroke={on ? 2.3 : 2} />
+      </Animated.View>
+      <Txt v="small" w={on ? 700 : 500} color={on ? 'brand' : 'faint'} style={{ fontSize: 11, lineHeight: 14, marginTop: 3 }}>{tab.label}</Txt>
+    </Pressable>
+  );
+}
+
 export function TabBar({ tabs, value, onChange }) {
   const { c, shadow } = useTheme();
   const insets = useSafeAreaInsets();
@@ -324,31 +508,28 @@ export function TabBar({ tabs, value, onChange }) {
   const idx = Math.max(0, tabs.findIndex((t) => t.id === value));
   const cell = w / tabs.length;
   useEffect(() => {
-    if (w) Animated.spring(x, { toValue: idx * cell, speed: 18, bounciness: 6, useNativeDriver: true }).start();
+    if (w) Animated.spring(x, { toValue: idx * cell, speed: 18, bounciness: 7, useNativeDriver: true }).start();
   }, [idx, w]);
   if (kb) return null;
   return (
     <View pointerEvents="box-none" style={{ position: 'absolute', left: 14, right: 14, bottom: insets.bottom + 10 }}>
-      <View style={[{ height: 68, borderRadius: 28, backgroundColor: c.surface, borderWidth: 1, borderColor: c.border, flexDirection: 'row', padding: 6 }, shadow, { shadowOpacity: 0.18, elevation: 10 }]} onLayout={(e) => setW(e.nativeEvent.layout.width - 12)}>
-        {w > 0 ? (
-          <Animated.View style={{ position: 'absolute', left: 6, top: 6, bottom: 6, width: cell, borderRadius: 22, backgroundColor: tint(c.brand, 0.16), transform: [{ translateX: x }] }} />
-        ) : null}
-        {tabs.map((t) => {
-          const on = t.id === value;
-          return (
-            <Pressable
-              key={t.id}
-              onPress={() => {
-                if (!on) Haptics.selectionAsync();
-                onChange(t.id);
-              }}
-              style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}
-            >
-              <Icon name={t.icon} size={22} color={on ? 'brand' : 'faint'} stroke={on ? 2.3 : 2} />
-              <Txt v="small" w={on ? 700 : 500} color={on ? 'brand' : 'faint'} style={{ fontSize: 11, lineHeight: 14, marginTop: 3 }}>{t.label}</Txt>
-            </Pressable>
-          );
-        })}
+      <View style={[{ borderRadius: 30, backgroundColor: 'transparent' }, shadow, { shadowOpacity: 0.3, shadowRadius: 22, elevation: 12 }]}>
+        <LinearGradient colors={c.edge} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ borderRadius: 30, padding: 1 }}>
+          <View style={{ height: 68, borderRadius: 29, backgroundColor: c.glassStrong, flexDirection: 'row', padding: 6 }} onLayout={(e) => setW(e.nativeEvent.layout.width - 12)}>
+            {w > 0 ? <Animated.View style={{ position: 'absolute', left: 6, top: 6, bottom: 6, width: cell, borderRadius: 23, backgroundColor: tint(c.brand, 0.18), transform: [{ translateX: x }] }} /> : null}
+            {tabs.map((t) => (
+              <TabItem
+                key={t.id}
+                tab={t}
+                on={t.id === value}
+                onPress={() => {
+                  if (t.id !== value) Haptics.selectionAsync();
+                  onChange(t.id);
+                }}
+              />
+            ))}
+          </View>
+        </LinearGradient>
       </View>
     </View>
   );
@@ -454,11 +635,15 @@ export function DayEditor({ dayKey, day, onSave, onClose }) {
 export function LockScreen({ onUnlock }) {
   const { c } = useTheme();
   return (
-    <View style={{ flex: 1, backgroundColor: c.bg, alignItems: 'center', justifyContent: 'center', padding: 28 }}>
-      <Hero kind="lock" size={280} />
-      <Txt v="h1" style={{ marginTop: 8 }}>Hours Planner</Txt>
-      <Txt v="body" color="dim" align="center" style={{ marginTop: 6, marginBottom: 28 }}>Your hours are locked. Use your fingerprint or screen lock to open the app.</Txt>
-      <Btn label="Unlock" icon="fingerprint" onPress={onUnlock} style={{ alignSelf: 'stretch' }} />
+    <View style={{ flex: 1, backgroundColor: c.bg }}>
+      <LinearGradient colors={[c.bg, c.bg2]} style={StyleSheet.absoluteFill} />
+      <Aurora />
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 28 }}>
+        <Brand size={92} icon="fingerprint" />
+        <Txt v="h1" style={{ marginTop: 6 }}>Hours Planner</Txt>
+        <Txt v="body" color="dim" align="center" style={{ marginTop: 6, marginBottom: 28 }}>Your hours are locked. Use your fingerprint or screen lock to open the app.</Txt>
+        <Btn label="Unlock" icon="fingerprint" onPress={onUnlock} style={{ alignSelf: 'stretch' }} />
+      </View>
     </View>
   );
 }

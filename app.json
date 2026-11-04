@@ -14,20 +14,20 @@
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "permissions": [
-        "USE_EXACT_ALARM",
-        "SCHEDULE_EXACT_ALARM",
-        "android.permission.ACCESS_COARSE_LOCATION",
-        "android.permission.ACCESS_FINE_LOCATION",
-        "android.permission.ACCESS_BACKGROUND_LOCATION",
-        "android.permission.RECEIVE_BOOT_COMPLETED",
+        "android.permission.USE_EXACT_ALARM",
+        "android.permission.SCHEDULE_EXACT_ALARM",
         "android.permission.RECORD_AUDIO",
-        "USE_EXACT_ALARM",
-        "SCHEDULE_EXACT_ALARM",
         "android.permission.ACCESS_COARSE_LOCATION",
         "android.permission.ACCESS_FINE_LOCATION",
         "android.permission.ACCESS_BACKGROUND_LOCATION",
         "android.permission.RECEIVE_BOOT_COMPLETED",
-        "android.permission.RECORD_AUDIO"
+        "android.permission.USE_EXACT_ALARM",
+        "android.permission.SCHEDULE_EXACT_ALARM",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_BACKGROUND_LOCATION",
+        "android.permission.RECEIVE_BOOT_COMPLETED"
       ],
       "blockedPermissions": [
         "android.permission.WRITE_CALENDAR",
@@ -38,7 +38,8 @@
         "android.permission.WRITE_EXTERNAL_STORAGE",
         "android.permission.READ_EXTERNAL_STORAGE",
         "android.permission.SYSTEM_ALERT_WINDOW"
-      ]
+      ],
+      "versionCode": 4
     },
     "plugins": [
       [
@@ -47,7 +48,12 @@
           "icon": "./assets/notification-icon.png",
           "color": "#7C5CFF",
           "sounds": [
-            "./assets/alarm.wav"
+            "./assets/sounds/classic.wav",
+            "./assets/sounds/pulse.wav",
+            "./assets/sounds/rise.wav",
+            "./assets/sounds/chime.wav",
+            "./assets/sounds/soft.wav",
+            "./assets/sounds/pop.wav"
           ]
         }
       ],
@@ -58,6 +64,13 @@
           "imageWidth": 200,
           "backgroundColor": "#070B16",
           "resizeMode": "contain"
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Hours Planner reads a photo only when you choose a profile picture.",
+          "cameraPermission": "Hours Planner uses the camera only when you take a profile photo."
         }
       ],
       [

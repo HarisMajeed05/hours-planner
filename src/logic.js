@@ -69,16 +69,17 @@ export const isLive = (d) => {
   return s.length > 0 && s[s.length - 1].out == null;
 };
 
-// every one of these returns a new day object, nothing is changed in place
-export function checkInDay(d, ms) {
+// every one of these returns a new day object, nothing is changed in place.
+// "by" is "manual" (me tapping) or "auto" (the office detection), only the auto ones are tagged
+export function checkInDay(d, ms, by = 'manual') {
   if (isLive(d)) return d;
-  return { ...d, done: false, sessions: [...sessionsOf(d), { in: ms, out: null }] };
+  return { ...d, done: false, sessions: [...sessionsOf(d), { in: ms, out: null, ...(by === 'auto' ? { inBy: 'auto' } : {}) }] };
 }
-export function checkOutDay(d, ms) {
+export function checkOutDay(d, ms, by = 'manual') {
   if (!isLive(d)) return d;
   const s = sessionsOf(d).slice();
   const last = s[s.length - 1];
-  s[s.length - 1] = { ...last, out: Math.max(ms, last.in) };
+  s[s.length - 1] = { ...last, out: Math.max(ms, last.in), ...(by === 'auto' ? { outBy: 'auto' } : {}) };
   return { ...d, sessions: s };
 }
 // for automatic recording: a quick exit and re-entry is the same visit, so reopen instead of splitting
@@ -87,10 +88,38 @@ export function resumeDay(d, ms, gapMs) {
   const last = s[s.length - 1];
   if (last && last.out != null && ms - last.out < gapMs) {
     const copy = s.slice();
-    copy[copy.length - 1] = { ...last, out: null };
+    const { outBy, ...rest } = last;
+    copy[copy.length - 1] = { ...rest, out: null, ro: { at: ms, out: last.out, outBy: outBy ?? null } }; // ro lets Undo put the old check out back
     return { ...d, done: false, sessions: copy };
   }
-  return checkInDay(d, ms);
+  return checkInDay(d, ms, 'auto');
+}
+
+// reverses an automatic check in ("in") or check out ("out") that happened at "at".
+// it only touches the session if it really is that automatic record, so tapping Undo twice, or late, does nothing.
+// it also pauses the automatic mode for the rest of that day, otherwise the next check would just redo it
+export function undoAuto(d, kind, at) {
+  const s = sessionsOf(d);
+  const last = s[s.length - 1];
+  if (!last) return d;
+  if (kind === 'in') {
+    if (last.out != null) return d;
+    if (last.ro && last.ro.at === at) {
+      const copy = s.slice();
+      const { ro, inBy, ...rest } = last;
+      copy[copy.length - 1] = { ...rest, ...(inBy ? { inBy } : {}), out: last.ro.out, ...(last.ro.outBy ? { outBy: last.ro.outBy } : {}) };
+      return { ...d, noAuto: true, sessions: copy };
+    }
+    if (last.inBy === 'auto' && last.in === at) return { ...d, noAuto: true, sessions: s.slice(0, -1) };
+    return d;
+  }
+  if (kind === 'out' && last.outBy === 'auto' && last.out === at) {
+    const copy = s.slice();
+    const { outBy, ...rest } = last;
+    copy[copy.length - 1] = { ...rest, out: null };
+    return { ...d, noAuto: true, done: false, sessions: copy };
+  }
+  return d;
 }
 
 // hours between check in and check out. an open session only counts live if it is today
@@ -119,7 +148,7 @@ export function migrateDay(d) {
   if (Array.isArray(o.sessions)) {
     o.sessions = o.sessions
       .filter((x) => x && Number.isFinite(x.in) && (x.out == null || Number.isFinite(x.out)))
-      .map((x) => ({ in: x.in, out: x.out ?? null }));
+      .map((x) => ({ in: x.in, out: x.out ?? null, ...(x.inBy ? { inBy: x.inBy } : {}), ...(x.outBy ? { outBy: x.outBy } : {}), ...(x.ro ? { ro: x.ro } : {}) }));
   }
   return o;
 }
@@ -162,6 +191,29 @@ export function suggestTimes(hours, typicalArrival, endMin) {
   inMin = Math.max(EARLIEST_IN, inMin);
   inMin = Math.floor(inMin / 5) * 5;
   return { inMin, outMin: inMin + len };
+}
+
+// ---------- office detection ----------
+
+// metres between two coordinates
+export function haversine(lat1, lon1, lat2, lon2) {
+  const R = 6371000;
+  const rad = (d) => (d * Math.PI) / 180;
+  const a = Math.sin(rad(lat2 - lat1) / 2) ** 2 + Math.cos(rad(lat1)) * Math.cos(rad(lat2)) * Math.sin(rad(lon2 - lon1) / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(a));
+}
+
+// what the automatic mode should do right now. dist and radius are in metres.
+// leaving needs a margin (25 percent past the radius) so GPS wobble on the edge cannot flip it back and forth.
+// arriving only auto-records when I have no visit yet, or my last visit was closed by the auto mode,
+// so a manual check out is never undone behind my back
+export function autoAction({ dist, radius, day, weight, hour }) {
+  if (!(weight > 0) || day?.done || day?.noAuto || hour < 5) return null;
+  if (isLive(day)) return dist > radius * 1.25 ? 'out' : null;
+  const s = sessionsOf(day);
+  const last = s[s.length - 1];
+  if (dist <= radius && (!last || last.outBy === 'auto')) return 'in';
+  return null;
 }
 
 // ---------- the month ----------
@@ -397,6 +449,38 @@ export function coachContext(days, s, now, st) {
       .slice(0, 5)
       .map((r) => ({ date: r.key, checkIn: fmtTime(r.planInMs), leave: fmtTime(r.planOutMs), hours: r2(r.hours) })),
   };
+}
+
+// ---------- cloud sync ----------
+
+// the settings that follow me to another phone. the name travels with the profile instead, and device specific ones (office spot, lock, geo mode, calendar) stay put
+export const SYNC_KEYS = ['target', 'margin', 'officialStart', 'officialEnd', 'plannerAt', 'alarms', 'theme', 'model', 'sounds', 'radius'];
+
+export function pickSync(settings) {
+  const o = {};
+  for (const k of SYNC_KEYS) if (settings?.[k] !== undefined) o[k] = settings[k];
+  o.su = settings?.su ?? 0; // when these settings last changed
+  return o;
+}
+
+// a short fingerprint of everything that syncs, used to know when something really changed
+export const syncSig = (days, settings) => JSON.stringify([days, SYNC_KEYS.map((k) => settings?.[k])]);
+
+// two copies of my data become one. each day keeps whichever copy was changed last (u is the time of its last change),
+// the settings follow whichever side changed them last. nothing is ever deleted by a merge
+export function mergeStates(local, remote) {
+  const days = {};
+  const keys = new Set([...Object.keys(local.days ?? {}), ...Object.keys(remote.days ?? {})]);
+  for (const k of keys) {
+    const a = local.days?.[k];
+    const b = remote.days?.[k];
+    days[k] = !b ? a : !a ? b : (b.u ?? 0) > (a.u ?? 0) ? b : a;
+  }
+  const ls = local.settings ?? {};
+  const rs = remote.settings ?? {};
+  const settings = (rs.su ?? 0) > (ls.su ?? 0) ? { ...ls, ...rs } : { ...rs, ...ls };
+  settings.su = Math.max(ls.su ?? 0, rs.su ?? 0);
+  return { days, settings };
 }
 
 // ---------- import, export, restore ----------

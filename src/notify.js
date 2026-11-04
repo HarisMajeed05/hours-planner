@@ -3,10 +3,10 @@
 // so the next sync drops the repeats that have not fired yet
 import * as Notifications from 'expo-notifications';
 import { fmtH, fmtTime, parseHM } from './logic';
+import { KINDS, channelFor } from './sounds';
+import { read } from './store';
 
 const T = Notifications.SchedulableTriggerInputTypes;
-const ALARM_CH = 'alarm-v1';
-const INFO_CH = 'info-v1';
 const RINGS = 4; // how many times one alarm rings
 const RING_GAP = 2 * 60000; // 2 minutes between rings
 const SOON = 1000; // ignore anything due in the next second
@@ -22,29 +22,33 @@ export function initNotifications() {
   });
 }
 
+// creates the channel for each kind from my current sound choices, and deletes the ones I left behind
+export async function ensureChannels(settings) {
+  const keep = new Set();
+  for (const kind of Object.keys(KINDS)) {
+    const { id, def } = channelFor(kind, settings);
+    keep.add(id);
+    await Notifications.setNotificationChannelAsync(id, def);
+  }
+  const all = (await Notifications.getNotificationChannelsAsync()) ?? [];
+  for (const ch of all) {
+    const mine = /^(alarm|reminder|auto)-/.test(ch.id) || ch.id === 'info-v1';
+    if (mine && !keep.has(ch.id)) await Notifications.deleteNotificationChannelAsync(ch.id).catch(() => {});
+  }
+}
+
 // on Android 13 the channels must exist before the permission prompt
-export async function ensurePermission() {
-  await Notifications.setNotificationChannelAsync(ALARM_CH, {
-    name: 'Check in and check out alarms',
-    importance: Notifications.AndroidImportance.MAX,
-    sound: 'alarm.wav',
-    audioAttributes: {
-      usage: Notifications.AndroidAudioUsage.ALARM,
-      contentType: Notifications.AndroidAudioContentType.SONIFICATION,
-    },
-    vibrationPattern: [0, 600, 300, 600, 300, 600],
-    lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
-  });
-  await Notifications.setNotificationChannelAsync(INFO_CH, {
-    name: 'Hours reminders',
-    importance: Notifications.AndroidImportance.HIGH,
-  });
-  // the buttons under the notification. they open the app, which then records the time
+export async function ensurePermission(settings) {
+  await ensureChannels(settings ?? {});
+  // buttons under the notifications. the first two open the app, Undo works without opening it
   await Notifications.setNotificationCategoryAsync('checkin', [
     { identifier: 'do-checkin', buttonTitle: 'Check in now', options: { opensAppToForeground: true } },
   ]);
   await Notifications.setNotificationCategoryAsync('checkout', [
     { identifier: 'do-checkout', buttonTitle: 'Check out now', options: { opensAppToForeground: true } },
+  ]);
+  await Notifications.setNotificationCategoryAsync('autoundo', [
+    { identifier: 'undo-auto', buttonTitle: 'Undo', options: { opensAppToForeground: false } },
   ]);
   const cur = await Notifications.getPermissionsAsync();
   if (cur.granted) return true;
@@ -52,11 +56,14 @@ export async function ensurePermission() {
   return asked.granted;
 }
 
-// show a notification right now, used by the geofence
-export async function notifyNow(title, body, category) {
+// show a notification right now on the channel of this kind (alarm, reminder or auto). used by the office detection and the test button
+export async function notifyNow(kind, title, body, { category, data } = {}) {
+  const { settings } = await read();
+  const { id, def } = channelFor(kind, settings);
+  await Notifications.setNotificationChannelAsync(id, def);
   await Notifications.scheduleNotificationAsync({
-    content: { title, body, ...(category ? { categoryIdentifier: category } : {}) },
-    trigger: { channelId: INFO_CH },
+    content: { title, body, ...(category ? { categoryIdentifier: category } : {}), ...(data ? { data } : {}) },
+    trigger: { channelId: id },
   });
 }
 
@@ -64,6 +71,9 @@ async function doSync({ settings, stats, now }) {
   await Notifications.cancelAllScheduledNotificationsAsync();
   if (!settings.alarms) return;
   if (!(await Notifications.getPermissionsAsync()).granted) return;
+  await ensureChannels(settings);
+  const ALARM_CH = channelFor('alarm', settings).id;
+  const INFO_CH = channelFor('reminder', settings).id;
 
   const nowMs = now.getTime();
   const jobs = [];

@@ -12,12 +12,14 @@ import * as SplashScreen from 'expo-splash-screen';
 import * as SystemUI from 'expo-system-ui';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
-import { syncGeofence, unlockWithBiometrics } from './src/device';
-import { checkInDay, checkOutDay, dateKey, monthStats } from './src/logic';
+import { syncNow, useAccount } from './src/account';
+import { enableAuto, reconcile, saveOfficeHere, syncGeofence, undoFromNotification, unlockWithBiometrics } from './src/device';
+import { checkInDay, checkOutDay, dateKey, monthStats, syncSig } from './src/logic';
 import { ensurePermission, initNotifications, syncNotifications } from './src/notify';
 import { DEFAULTS, read, subscribe, updateDay, updateSettings } from './src/store';
-import { DayEditor, LockScreen, TabBar, ThemeProvider, useTheme } from './src/ui';
+import { Crossfade, DayEditor, LockScreen, TabBar, ThemeProvider, useTheme } from './src/ui';
 import { refreshWidget } from './src/widget';
+import { AuthScreen, ProfileScreen } from './src/screens/Account';
 import Coach from './src/screens/Coach';
 import DataTools from './src/screens/Data';
 import Insights from './src/screens/Insights';
@@ -45,6 +47,9 @@ function Shell({ state, ready }) {
   const [tab, setTab] = useState('today');
   const [editKey, setEditKey] = useState(null);
   const [showData, setShowData] = useState(false);
+  const [showAuth, setShowAuth] = useState(false);
+  const [showProfile, setShowProfile] = useState(false);
+  const account = useAccount();
   const [chat, setChat] = useState([]);
   const [locked, setLocked] = useState(true);
   const lockOn = useRef(false);
@@ -78,6 +83,14 @@ function Shell({ state, ready }) {
   // back closes the data screen, then returns to Today, then leaves the app
   useEffect(() => {
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (showAuth) {
+        setShowAuth(false);
+        return true;
+      }
+      if (showProfile) {
+        setShowProfile(false);
+        return true;
+      }
       if (showData) {
         setShowData(false);
         return true;
@@ -89,7 +102,7 @@ function Shell({ state, ready }) {
       return false;
     });
     return () => sub.remove();
-  }, [showData, tab]);
+  }, [showAuth, showProfile, showData, tab]);
 
   const unlock = useCallback(async () => {
     if (await unlockWithBiometrics()) setLocked(false);
@@ -98,7 +111,7 @@ function Shell({ state, ready }) {
   useEffect(() => {
     if (!ready) return;
     setLocked(!!state.settings.lock);
-    if (state.settings.onboarded) ensurePermission().catch(() => {});
+    if (state.settings.onboarded) ensurePermission(state.settings).catch(() => {});
     refreshWidget();
     SplashScreen.hideAsync().catch(() => {});
   }, [ready]);
@@ -120,7 +133,37 @@ function Shell({ state, ready }) {
     if (ready) syncGeofence(state.settings).catch(() => {});
   }, [ready, geo, office, radius]);
 
+  // when automatic mode is on, look at where I am every time I open the app (the background check covers the rest)
+  useEffect(() => {
+    if (ready && geo === 'auto') reconcile().catch(() => {});
+  }, [ready, geo, wake]);
+
+  // keep the cloud copy fresh: a few seconds after something changes, and when I come back after a while
+  const sig = useMemo(() => syncSig(state.days, state.settings), [state.days, state.settings]);
+  useEffect(() => {
+    if (!ready || !account.user) return;
+    const t = setTimeout(() => syncNow().catch(() => {}), 6000);
+    return () => clearTimeout(t);
+  }, [ready, account.user?.id, sig]);
+  useEffect(() => {
+    if (ready && account.user && Date.now() - account.last > 120000) syncNow().catch(() => {});
+  }, [wake]);
+
   const stats = useMemo(() => monthStats(state.days, state.settings, now), [state, now]);
+
+  // the toggle throws a readable message when something is missing, the screens show it
+  const setAuto = useCallback(
+    async (on) => {
+      if (!on) return updateSettings({ geo: 'off' });
+      const patch = await enableAuto(state.settings);
+      await updateSettings(patch);
+    },
+    [state.settings]
+  );
+  const saveOffice = useCallback(async () => {
+    const spot = await saveOfficeHere();
+    await updateSettings({ office: spot });
+  }, []);
 
   const today = () => dateKey(new Date());
   const checkIn = useCallback(() => updateDay(today(), (d) => checkInDay(d, Date.now())), []);
@@ -137,28 +180,40 @@ function Shell({ state, ready }) {
     handled.current = id;
     if (last.actionIdentifier === 'do-checkin') checkIn();
     if (last.actionIdentifier === 'do-checkout') checkOut();
+    if (last.actionIdentifier === 'undo-auto') undoFromNotification(last.notification.request.content.data).catch(() => {});
     Notifications.clearLastNotificationResponse();
   }, [last, ready]);
 
   if (!ready) return <View style={{ flex: 1, backgroundColor: c.bg }} />;
   if (showLock) return <LockScreen onUnlock={unlock} />;
-  if (!state.settings.onboarded) return <Onboarding settings={state.settings} onDone={updateSettings} />;
+  if (!state.settings.onboarded) {
+    return (
+      <View style={{ flex: 1 }}>
+        <Onboarding settings={state.settings} account={account} onDone={updateSettings} onSignIn={() => setShowAuth(true)} />
+        {showAuth && <AuthScreen account={account} onClose={() => setShowAuth(false)} />}
+      </View>
+    );
+  }
 
   return (
     <View style={{ flex: 1, backgroundColor: c.bg }}>
       <StatusBar style={dark ? 'light' : 'dark'} />
       <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
         <View style={{ flex: 1 }}>
-          {tab === 'today' && (
-            <Today days={state.days} settings={state.settings} stats={stats} onCheckIn={checkIn} onCheckOut={checkOut} onFinish={finish} onPatch={patchDay} onEdit={setEditKey} />
-          )}
-          {tab === 'month' && <Month now={now} stats={stats} settings={state.settings} onEdit={setEditKey} />}
-          {tab === 'insights' && <Insights days={state.days} settings={state.settings} stats={stats} now={now} />}
-          {tab === 'coach' && <Coach days={state.days} settings={state.settings} stats={stats} now={now} chat={chat} setChat={setChat} />}
-          {tab === 'settings' && <Settings settings={state.settings} onPatch={updateSettings} onData={() => setShowData(true)} />}
+          <Crossfade key={tab}>
+            {tab === 'today' && (
+              <Today days={state.days} settings={state.settings} account={account} stats={stats} onCheckIn={checkIn} onCheckOut={checkOut} onFinish={finish} onPatch={patchDay} onEdit={setEditKey} onAuto={setAuto} onSaveOffice={saveOffice} onProfile={() => setShowProfile(true)} onAuth={() => setShowAuth(true)} onSettings={updateSettings} />
+            )}
+            {tab === 'month' && <Month now={now} stats={stats} settings={state.settings} onEdit={setEditKey} />}
+            {tab === 'insights' && <Insights days={state.days} settings={state.settings} stats={stats} now={now} />}
+            {tab === 'coach' && <Coach days={state.days} settings={state.settings} stats={stats} now={now} chat={chat} setChat={setChat} />}
+            {tab === 'settings' && <Settings settings={state.settings} account={account} onPatch={updateSettings} onData={() => setShowData(true)} onAuto={setAuto} onSaveOffice={saveOffice} onProfile={() => setShowProfile(true)} onAuth={() => setShowAuth(true)} />}
+          </Crossfade>
           {showData && <DataTools days={state.days} settings={state.settings} onClose={() => setShowData(false)} />}
+          {showProfile && <ProfileScreen account={account} settings={state.settings} onClose={() => setShowProfile(false)} onAuth={() => setShowAuth(true)} />}
+          {showAuth && <AuthScreen account={account} onClose={() => setShowAuth(false)} />}
         </View>
-        {!showData && <TabBar tabs={TABS} value={tab} onChange={setTab} />}
+        {!showData && !showProfile && !showAuth && <TabBar tabs={TABS} value={tab} onChange={setTab} />}
       </KeyboardAvoidingView>
 
       <DayEditor
