@@ -1,7 +1,7 @@
 import React from 'react';
 import { Pressable, View } from 'react-native';
 import { TYPES, fmtH, fmtMin, fmtTime, parseHM, parseKey } from '../logic';
-import { Card, FadeIn, Icon, Pill, Screen, ScreenHeader, Section, Stat, TYPE_ICON, Txt, tint, useTheme } from '../ui';
+import { Card, FadeIn, Icon, Pill, Screen, Section, Stat, TYPE_ICON, Txt, tint, useTheme } from '../ui';
 
 const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
@@ -75,8 +75,7 @@ export default function Month({ now, stats, settings, onEdit }) {
   const keyOf = (d) => `${y}-${pad(m + 1)}-${pad(d)}`;
 
   return (
-    <Screen>
-      <ScreenHeader title={MONTHS[m]} sub={`${y} · ${fmtH(stats.worked)} of ${stats.target}h`} right={<Pill label={`${stats.daysLeft} days left`} icon="calendarDays" />} />
+    <Screen title={MONTHS[m]} sub={`${y} · ${fmtH(stats.worked)} of ${stats.target}h`} right={<Pill label={`${stats.daysLeft} days left`} icon="calendarDays" />}>
 
       <FadeIn>
         <Card>
@@ -116,7 +115,7 @@ export default function Month({ now, stats, settings, onEdit }) {
 
       <FadeIn delay={80}>
         <View style={{ flexDirection: 'row', marginBottom: 12 }}>
-          <Stat icon="hourglass" label="Left" value={fmtH(stats.remaining)} tone="warn" />
+          <Stat icon="hourglass" label="Left" value={`${Math.round(stats.remaining)}h`} tone="warn" />
           <View style={{ width: 10 }} />
           <Stat icon="login" label="Usual in" value={fmtMin(stats.typicalArrival)} tone="brand" />
           <View style={{ width: 10 }} />

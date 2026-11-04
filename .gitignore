@@ -4,4 +4,4 @@ dist/
 android/
 ios/
 *.jks
-.env*
+config.bat

@@ -1,12 +1,12 @@
 import React, { useRef, useState } from 'react';
-import { Pressable, ScrollView, View } from 'react-native';
+import { Alert, Pressable, ScrollView, Switch, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { ExpoSpeechRecognitionModule, useSpeechRecognitionEvent } from 'expo-speech-recognition';
 import * as Haptics from 'expo-haptics';
-import { todaysMeetings } from '../device';
+import { officeStatus, todaysMeetings } from '../device';
 import { askGroq } from '../groq';
 import { TYPES, clampToday, fmtH, fmtTime, parseKey, todayRange, typeOf } from '../logic';
-import { Avatar, Btn, Card, FadeIn, Field, HERO, Icon, Meter, Notice, Pill, Ring, Screen, Section, Segmented, Stat, Txt, tint, useTheme } from '../ui';
+import { Avatar, Btn, Card, CountUp, FadeIn, Field, Glass, HERO, Icon, Meter, Notice, Pill, Ring, Screen, Section, Segmented, SlideButton, Stat, Txt, tint, useTheme } from '../ui';
 
 const DAY = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -42,13 +42,53 @@ function Fact({ icon, label, value }) {
   );
 }
 
-export default function Today({ days, settings, stats, onCheckIn, onCheckOut, onFinish, onPatch, onEdit }) {
+export default function Today({ days, settings, account, stats, onCheckIn, onCheckOut, onFinish, onPatch, onEdit, onAuto, onSaveOffice, onProfile, onAuth, onSettings }) {
   const { c } = useTheme();
   const key = stats.todayKey;
   const day = days[key];
   const row = stats.rows.find((r) => r.key === key);
   const state = row?.state ?? 'none';
   const st = STATUS[state];
+
+  // the auto check in toggle, it refuses (with a reason) until the office spot and permissions are in place
+  async function toggleAuto(on) {
+    setAutoMsg('');
+    setAutoBad(false);
+    try {
+      await onAuto(on);
+      Haptics.selectionAsync();
+    } catch (e) {
+      setAutoMsg(e.message);
+      setAutoBad(true);
+    }
+  }
+
+  function saveSpot() {
+    Alert.alert('Save this spot as your office?', 'Only do this while you are standing at the office.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Yes, I am here',
+        onPress: async () => {
+          try {
+            await onSaveOffice();
+            setAutoMsg('Office saved. Now switch on Auto check in.');
+            setAutoBad(false);
+          } catch (e) {
+            setAutoMsg(e.message);
+            setAutoBad(true);
+          }
+        },
+      },
+    ]);
+  }
+
+  async function whereAmI() {
+    setAutoBad(false);
+    setAutoMsg('Looking for you...');
+    const r = await officeStatus(settings).catch(() => null);
+    setAutoMsg(r ? `You are ${Math.round(r.dist)} m from the office, ${r.inside ? 'inside' : 'outside'} the ${settings.radius} m radius.` : 'No location fix yet. Step outside or try again in a moment.');
+  }
+
   const left = Math.max(0, stats.todayPlan - stats.todayH);
   const perDay = stats.weightsLeft ? stats.needPerDay : 0;
   const dayType = typeOf(day);
@@ -59,6 +99,9 @@ export default function Today({ days, settings, stats, onCheckIn, onCheckOut, on
   const [note, setNote] = useState('');
   const [listening, setListening] = useState(false);
   const spoken = useRef('');
+  const [autoMsg, setAutoMsg] = useState('');
+  const [autoBad, setAutoBad] = useState(false);
+  const auto = settings.geo === 'auto';
 
   useSpeechRecognitionEvent('start', () => setListening(true));
   useSpeechRecognitionEvent('end', () => setListening(false));
@@ -128,71 +171,135 @@ export default function Today({ days, settings, stats, onCheckIn, onCheckOut, on
             <Txt v="small" color="dim">{niceDate(key)}</Txt>
             <Txt v="h1">{greet(new Date().getHours())}{settings.name ? `, ${settings.name}` : ''}</Txt>
           </View>
-          <Avatar name={settings.name || 'H'} />
+          <Pressable onPress={onProfile} hitSlop={8}>
+            <Avatar name={settings.name || 'H'} avatar={settings.avatar} />
+          </Pressable>
         </View>
       </FadeIn>
 
       <FadeIn delay={60}>
-        <LinearGradient colors={st.grad} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ borderRadius: 30, padding: 20, marginBottom: 12 }}>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-            <Pill label={st.label} icon={st.icon} solid />
-            {row?.sessions?.length > 1 ? <Pill label={`${row.sessions.length} visits`} icon="layers" solid /> : null}
-          </View>
+        <View style={{ borderRadius: 32, marginBottom: 12, shadowColor: st.grad[0], shadowOpacity: 0.5, shadowRadius: 28, shadowOffset: { width: 0, height: 14 }, elevation: 14 }}>
+          <LinearGradient colors={st.grad} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ borderRadius: 32, padding: 20 }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+              <Pill label={st.label} icon={st.icon} solid />
+              {row?.sessions?.length > 1 ? <Pill label={`${row.sessions.length} visits`} icon="layers" solid /> : null}
+            </View>
 
-          <Ring value={stats.todayH} max={stats.todayPlan} size={196} stroke={16} colors={['#FFFFFF', '#FFFFFF']} track="rgba(255,255,255,0.28)">
-            <Txt v="num" color="#FFFFFF" style={{ fontSize: 36, lineHeight: 42 }}>{fmtH(stats.todayH)}</Txt>
-            <Txt v="small" color="rgba(255,255,255,0.8)">{stats.todayPlan > 0 ? `of ${fmtH(stats.todayPlan)}` : TYPES[dayType].w === 0 ? TYPES[dayType].label : 'no plan'}</Txt>
-          </Ring>
+            <Ring value={stats.todayH} max={stats.todayPlan} size={196} stroke={16} colors={['#FFFFFF', '#FFFFFF']} track="rgba(255,255,255,0.28)">
+              <CountUp value={stats.todayH} format={fmtH} color="#FFFFFF" style={{ fontSize: 36, lineHeight: 42 }} />
+              <Txt v="small" color="rgba(255,255,255,0.8)">{stats.todayPlan > 0 ? `of ${fmtH(stats.todayPlan)}` : TYPES[dayType].w === 0 ? TYPES[dayType].label : 'no plan'}</Txt>
+            </Ring>
 
-          <View style={{ flexDirection: 'row', backgroundColor: 'rgba(255,255,255,0.16)', borderRadius: 18, paddingVertical: 12, marginTop: 18 }}>
-            {state === 'live' ? (
-              <>
-                <Fact icon="login" label="In" value={fmtTime(row.inMs)} />
-                <Fact icon="logout" label="Leave" value={fmtTime(row.planOutMs)} />
-                <Fact icon="hourglass" label="Left" value={fmtH(left)} />
-              </>
-            ) : state === 'today' ? (
-              <>
-                <Fact icon="login" label="Suggested in" value={row?.planInMs ? fmtTime(row.planInMs) : '-'} />
-                <Fact icon="logout" label="Leave" value={row?.planOutMs ? fmtTime(row.planOutMs) : '-'} />
-                <Fact icon="target" label="Plan" value={fmtH(stats.todayPlan)} />
-              </>
-            ) : state === 'break' ? (
-              <>
-                <Fact icon="login" label="First in" value={fmtTime(row.inMs)} />
-                <Fact icon="hourglass" label="Still to do" value={fmtH(left)} />
-                <Fact icon="target" label="Plan" value={fmtH(stats.todayPlan)} />
-              </>
-            ) : state === 'done' ? (
-              <>
-                <Fact icon="login" label="In" value={row?.inMs ? fmtTime(row.inMs) : '-'} />
-                <Fact icon="logout" label="Out" value={row?.outMs ? fmtTime(row.outMs) : '-'} />
-                <Fact icon="clock" label="Total" value={fmtH(stats.todayH)} />
-              </>
-            ) : (
-              <View style={{ flex: 1, alignItems: 'center' }}>
-                <Txt v="small" color="#FFFFFF">Enjoy the day. Check in only if you work today.</Txt>
+            <View style={{ flexDirection: 'row', backgroundColor: 'rgba(255,255,255,0.16)', borderRadius: 20, paddingVertical: 12, marginTop: 18 }}>
+              {state === 'live' ? (
+                <>
+                  <Fact icon="login" label="In" value={fmtTime(row.inMs)} />
+                  <Fact icon="logout" label="Leave" value={fmtTime(row.planOutMs)} />
+                  <Fact icon="hourglass" label="Left" value={fmtH(left)} />
+                </>
+              ) : state === 'today' ? (
+                <>
+                  <Fact icon="login" label="Suggested in" value={row?.planInMs ? fmtTime(row.planInMs) : '-'} />
+                  <Fact icon="logout" label="Leave" value={row?.planOutMs ? fmtTime(row.planOutMs) : '-'} />
+                  <Fact icon="target" label="Plan" value={fmtH(stats.todayPlan)} />
+                </>
+              ) : state === 'break' ? (
+                <>
+                  <Fact icon="login" label="First in" value={fmtTime(row.inMs)} />
+                  <Fact icon="hourglass" label="Still to do" value={fmtH(left)} />
+                  <Fact icon="target" label="Plan" value={fmtH(stats.todayPlan)} />
+                </>
+              ) : state === 'done' ? (
+                <>
+                  <Fact icon="login" label="In" value={row?.inMs ? fmtTime(row.inMs) : '-'} />
+                  <Fact icon="logout" label="Out" value={row?.outMs ? fmtTime(row.outMs) : '-'} />
+                  <Fact icon="clock" label="Total" value={fmtH(stats.todayH)} />
+                </>
+              ) : (
+                <View style={{ flex: 1, alignItems: 'center' }}>
+                  <Txt v="small" color="#FFFFFF">Enjoy the day. Check in only if you work today.</Txt>
+                </View>
+              )}
+            </View>
+
+            <View style={{ marginTop: 16 }}>
+              {state === 'live' ? (
+                <SlideButton label="Slide to check out" icon="logout" danger onComplete={onCheckOut} />
+              ) : state === 'break' ? (
+                <View>
+                  <SlideButton label="Slide to check in again" icon="login" onComplete={onCheckIn} />
+                  <Btn label="Finish the day here" kind="glass" small onPress={tap(onFinish)} style={{ marginTop: 10 }} />
+                </View>
+              ) : state === 'done' ? (
+                <SlideButton label="Slide to check in again" icon="login" onComplete={onCheckIn} />
+              ) : state === 'off' || state === 'none' ? (
+                <SlideButton label="Slide to check in anyway" icon="login" onComplete={onCheckIn} />
+              ) : (
+                <SlideButton label="Slide to check in" icon="login" onComplete={onCheckIn} />
+              )}
+            </View>
+          </LinearGradient>
+        </View>
+      </FadeIn>
+
+      <FadeIn delay={100}>
+        <View style={{ flexDirection: 'row', marginBottom: 12 }}>
+          <Glass radius={24} pad={14} style={{ flex: 1.15, marginBottom: 0, marginRight: 10 }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+              <View style={{ width: 38, height: 38, borderRadius: 12, backgroundColor: tint(c.brand2, 0.16), alignItems: 'center', justifyContent: 'center' }}>
+                <Icon name="radar" size={19} color="brand2" />
               </View>
-            )}
-          </View>
+              <Switch value={auto} onValueChange={toggleAuto} trackColor={{ false: c.border, true: tint(c.brand, 0.55) }} thumbColor={auto ? c.brand : c.faint} />
+            </View>
+            <Txt v="title" style={{ marginTop: 12 }}>Auto check in</Txt>
+            <Txt v="small" color="dim" style={{ marginTop: 2 }}>
+              {!settings.office ? 'Needs your office spot' : auto && day?.noAuto ? 'Paused for today' : auto ? `On, ${settings.radius} m radius` : 'Off'}
+            </Txt>
+            {!settings.office ? (
+              <Pressable onPress={saveSpot} hitSlop={8} style={{ marginTop: 8 }}>
+                <Txt v="small" w={700} color="brand">Save spot here</Txt>
+              </Pressable>
+            ) : auto && day?.noAuto ? (
+              <Pressable onPress={() => onPatch(key, { noAuto: false })} hitSlop={8} style={{ marginTop: 8 }}>
+                <Txt v="small" w={700} color="brand">Resume</Txt>
+              </Pressable>
+            ) : auto ? (
+              <Pressable onPress={whereAmI} hitSlop={8} style={{ marginTop: 8 }}>
+                <Txt v="small" w={700} color="brand">Where am I?</Txt>
+              </Pressable>
+            ) : null}
+          </Glass>
 
-          <View style={{ marginTop: 16 }}>
-            {state === 'live' ? (
-              <Btn label="Check out" icon="logout" kind="white" onPress={tap(onCheckOut)} />
-            ) : state === 'break' ? (
-              <View style={{ flexDirection: 'row' }}>
-                <Btn label="Check in again" icon="login" kind="white" onPress={tap(onCheckIn)} style={{ flex: 1.3, marginRight: 10 }} />
-                <Btn label="Finish day" kind="glass" onPress={tap(onFinish)} style={{ flex: 1 }} />
+          <Glass radius={24} pad={14} style={{ flex: 1, marginBottom: 0 }}>
+            <View style={{ flexGrow: 1, alignItems: 'center', justifyContent: 'center' }}>
+              <Ring value={stats.worked} max={stats.target} size={92} stroke={10} colors={stats.worked >= stats.floor ? [c.good, c.brand2] : undefined}>
+                <Txt v="numSm" style={{ fontSize: 18 }}>{Math.round((stats.worked / stats.target) * 100)}%</Txt>
+              </Ring>
+              <Txt v="small" color="dim" style={{ marginTop: 8 }}>of the month</Txt>
+            </View>
+          </Glass>
+        </View>
+        {autoMsg ? <Notice tone={autoBad ? 'bad' : 'info'} icon={autoBad ? 'info' : 'nav'} text={autoMsg} style={{ marginTop: 0, marginBottom: 12 }} /> : null}
+      </FadeIn>
+
+      <FadeIn delay={110}>
+        {!account?.user && !settings.bannerDismissed ? (
+          <Card>
+            <View style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
+              <View style={{ width: 40, height: 40, borderRadius: 13, backgroundColor: tint(c.brand2, 0.16), alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
+                <Icon name="cloud" size={20} color="brand2" />
               </View>
-            ) : state === 'done' ? (
-              <Btn label="Check in again" icon="login" kind="glass" onPress={tap(onCheckIn)} />
-            ) : state === 'off' || state === 'none' ? (
-              <Btn label="Check in anyway" icon="login" kind="glass" onPress={tap(onCheckIn)} />
-            ) : (
-              <Btn label="Check in" icon="login" kind="white" onPress={tap(onCheckIn)} />
-            )}
-          </View>
-        </LinearGradient>
+              <View style={{ flex: 1 }}>
+                <Txt v="title">Back up and sync your hours</Txt>
+                <Txt v="small" color="dim" style={{ marginTop: 2 }}>Sign in and your hours survive a reinstall or a new phone.</Txt>
+              </View>
+              <Pressable onPress={() => onSettings({ bannerDismissed: true })} hitSlop={10}>
+                <Icon name="x" size={18} color="faint" />
+              </Pressable>
+            </View>
+            <Btn label="Sign in or create account" icon="login" kind="soft" small onPress={onAuth} style={{ marginTop: 12 }} />
+          </Card>
+        ) : null}
       </FadeIn>
 
       <FadeIn delay={120}>

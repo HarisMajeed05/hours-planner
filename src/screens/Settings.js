@@ -1,35 +1,129 @@
 import React, { useEffect, useState } from 'react';
-import { Alert, Pressable, Switch, View } from 'react-native';
+import { Alert, Linking, Pressable, ScrollView, Switch, View } from 'react-native';
+import { createAudioPlayer } from 'expo-audio';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Updates from 'expo-updates';
-import { biometricReady, saveOfficeHere, todaysMeetings, unlockWithBiometrics } from '../device';
+import { biometricReady, officeStatus, todaysMeetings, unlockWithBiometrics } from '../device';
 import { parseHM } from '../logic';
+import { notifyNow } from '../notify';
+import { KINDS, SOUNDS, channelFor, soundPrefs } from '../sounds';
 import { getGroqKey, setGroqKey } from '../store';
-import { Avatar, Btn, Card, Chip, FadeIn, Field, Icon, Notice, Pill, Row, Screen, ScreenHeader, Segmented, Txt, tint, useKeyboard, useTheme } from '../ui';
+import { Btn, Card, Chip, FadeIn, Field, Icon, Notice, Pill, Row, Screen, Segmented, Sheet, Txt, tint, useKeyboard, useTheme } from '../ui';
+import { AccountCard } from './Account';
 
 const MODELS = ['openai/gpt-oss-20b', 'openai/gpt-oss-120b'];
-const GEO = [
-  { id: 'off', label: 'Off', icon: 'x' },
-  { id: 'prompt', label: 'Ask me', icon: 'bell' },
-  { id: 'auto', label: 'Automatic', icon: 'zap' },
-];
 const THEMES = [
   { id: 'system', label: 'Phone', icon: 'phone' },
   { id: 'dark', label: 'Dark', icon: 'moon' },
   { id: 'light', label: 'Light', icon: 'sun' },
 ];
 
-const typed = (s) => ({ name: s.name ?? '', model: s.model, target: String(s.target), margin: String(s.margin), officialStart: s.officialStart, officialEnd: s.officialEnd, plannerAt: s.plannerAt, radius: String(s.radius) });
+const PKG = 'com.hoursplanner.app';
+
+// one player at a time for the sound preview
+let player = null;
+const stopPreview = () => {
+  try {
+    player?.remove();
+  } catch {}
+  player = null;
+};
+const preview = (src) => {
+  stopPreview();
+  try {
+    player = createAudioPlayer(src);
+    player.play();
+  } catch {}
+};
+
+// pick the sound, vibration and priority for one kind of notification, with a preview and a test
+function SoundSheet({ kind, settings, onPatch, onClose }) {
+  const { c } = useTheme();
+  const K = KINDS[kind];
+  const prefs = soundPrefs(settings)[kind];
+  const set = (patch) => onPatch({ sounds: { ...soundPrefs(settings), [kind]: { ...prefs, ...patch } } });
+  useEffect(() => stopPreview, []);
+
+  const openSystem = () =>
+    Linking.sendIntent('android.settings.CHANNEL_NOTIFICATION_SETTINGS', [
+      { key: 'android.provider.extra.APP_PACKAGE', value: PKG },
+      { key: 'android.provider.extra.CHANNEL_ID', value: channelFor(kind, settings).id },
+    ]).catch(() => Linking.openSettings());
+
+  return (
+    <Sheet onClose={onClose}>
+      <ScrollView showsVerticalScrollIndicator={false}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 14 }}>
+          <View style={{ width: 42, height: 42, borderRadius: 14, backgroundColor: tint(c[K.tone], 0.16), alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
+            <Icon name={K.icon} size={21} color={K.tone} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Txt v="h2">{K.label}</Txt>
+            <Txt v="small" color="dim">{K.sub}</Txt>
+          </View>
+        </View>
+
+        {SOUNDS.map((snd) => {
+          const on = prefs.sound === snd.id;
+          return (
+            <Pressable
+              key={snd.id}
+              onPress={() => {
+                set({ sound: snd.id });
+                if (snd.src) preview(snd.src);
+                else stopPreview();
+              }}
+              style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 11, paddingHorizontal: 12, borderRadius: 16, marginBottom: 6, borderWidth: 1.5, borderColor: on ? c.brand : c.border, backgroundColor: on ? tint(c.brand, 0.12) : c.surfaceHi }}
+            >
+              <View style={{ width: 22, height: 22, borderRadius: 11, borderWidth: 2, borderColor: on ? c.brand : c.faint, alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
+                {on ? <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: c.brand }} /> : null}
+              </View>
+              <View style={{ flex: 1 }}>
+                <Txt v="title" style={{ fontSize: 15 }}>{snd.label}</Txt>
+                <Txt v="small" color="dim">{snd.sub}</Txt>
+              </View>
+              {snd.src ? <Icon name="play" size={18} color={on ? 'brand' : 'faint'} /> : null}
+            </Pressable>
+          );
+        })}
+
+        <View style={{ marginTop: 8 }}>
+          <Row icon="zap" tone="warn" title="Vibrate" right={<Switch value={prefs.vibrate} onValueChange={(v) => set({ vibrate: v })} trackColor={{ false: c.border, true: tint(c.brand, 0.55) }} thumbColor={prefs.vibrate ? c.brand : c.faint} />} last={kind === 'alarm'} />
+          {kind !== 'alarm' ? (
+            <View style={{ paddingTop: 12 }}>
+              <Txt v="small" color="dim" style={{ marginBottom: 8 }}>Priority</Txt>
+              <Segmented options={[{ id: 'default', label: 'Quiet', icon: 'bell' }, { id: 'high', label: 'Pop up', icon: 'bellRing' }]} value={prefs.priority} onChange={(id) => set({ priority: id })} />
+            </View>
+          ) : (
+            <Txt v="small" color="faint" style={{ marginTop: 10 }}>Alarms always use the highest priority and the alarm volume.</Txt>
+          )}
+        </View>
+
+        <View style={{ flexDirection: 'row', marginTop: 16 }}>
+          <Btn label="Send a test" icon="bell" kind="soft" small onPress={() => notifyNow(kind, `Test: ${K.label}`, 'This is how it will sound.')} style={{ flex: 1, marginRight: 10 }} />
+          <Btn label="Android settings" icon="settings" kind="ghost" small onPress={openSystem} style={{ flex: 1 }} />
+        </View>
+        <Txt v="small" color="faint" style={{ marginTop: 10 }}>Android keeps sound, vibration and priority per channel. Changing them here makes a fresh channel, so anything you changed in Android settings starts over. Use "Android settings" to fine tune the current one.</Txt>
+        <Btn label="Done" onPress={onClose} style={{ marginTop: 16 }} />
+      </ScrollView>
+    </Sheet>
+  );
+}
+
+const typed = (s) => ({ model: s.model, target: String(s.target), margin: String(s.margin), officialStart: s.officialStart, officialEnd: s.officialEnd, plannerAt: s.plannerAt, radius: String(s.radius) });
 
 // toggles and choices apply at once, typed values show a save button
-export default function Settings({ settings, onPatch, onData }) {
+export default function Settings({ settings, account, onPatch, onData, onAuto, onSaveOffice, onProfile, onAuth }) {
   const { c } = useTheme();
   const kb = useKeyboard();
+  const insets = useSafeAreaInsets();
   const [f, setF] = useState(typed(settings));
   const [key, setKey] = useState('');
   const [savedKey, setSavedKey] = useState('');
   const [showKey, setShowKey] = useState(false);
   const [msg, setMsg] = useState('');
   const [info, setInfo] = useState('');
+  const [soundKind, setSoundKind] = useState(null);
 
   useEffect(() => {
     getGroqKey().then((k) => {
@@ -54,7 +148,7 @@ export default function Settings({ settings, onPatch, onData }) {
     if (parseHM(f.officialEnd) <= parseHM(f.officialStart)) return setMsg('Office end has to be after office start.');
     await setGroqKey(key.trim());
     setSavedKey(key.trim());
-    onPatch({ name: f.name.trim(), model: f.model.trim(), target, margin, radius, officialStart: f.officialStart, officialEnd: f.officialEnd, plannerAt: f.plannerAt });
+    onPatch({ model: f.model.trim(), target, margin, radius, officialStart: f.officialStart, officialEnd: f.officialEnd, plannerAt: f.plannerAt });
     setMsg('');
   };
 
@@ -75,15 +169,37 @@ export default function Settings({ settings, onPatch, onData }) {
     }
   };
 
-  const saveOffice = async () => {
+  const toggleAuto = async (on) => {
+    setInfo('');
     try {
-      setInfo('Getting your location...');
-      const office = await saveOfficeHere();
-      onPatch({ office, geo: settings.geo === 'off' ? 'prompt' : settings.geo });
-      setInfo('Office saved. Stand somewhere else and tap again to move it.');
+      await onAuto(on);
     } catch (e) {
       setInfo(e.message);
     }
+  };
+
+  const saveOffice = () => {
+    Alert.alert('Save this spot as your office?', 'Only do this while you are standing at the office.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Yes, I am here',
+        onPress: async () => {
+          try {
+            setInfo('Getting your location...');
+            await onSaveOffice();
+            setInfo('Office saved. Now switch on Auto check in and out.');
+          } catch (e) {
+            setInfo(e.message);
+          }
+        },
+      },
+    ]);
+  };
+
+  const whereAmI = async () => {
+    setInfo('Looking for you...');
+    const r = await officeStatus(settings).catch(() => null);
+    setInfo(r ? `You are ${Math.round(r.dist)} m from the office, ${r.inside ? 'inside' : 'outside'} the ${settings.radius} m radius.` : 'No location fix yet, or no office saved.');
   };
 
   const checkUpdate = async () => {
@@ -104,20 +220,10 @@ export default function Settings({ settings, onPatch, onData }) {
 
   return (
     <View style={{ flex: 1 }}>
-      <Screen contentStyle={{ paddingBottom: 190 }}>
-        <ScreenHeader title="Settings" sub="Make it yours" />
+      <Screen title="Settings" sub="Make it yours" contentStyle={{ paddingBottom: 190 }}>
 
         <FadeIn>
-          <Card>
-            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 14 }}>
-              <Avatar name={f.name || 'H'} size={52} />
-              <View style={{ marginLeft: 14, flex: 1 }}>
-                <Txt v="h2">{f.name.trim() || 'Your name'}</Txt>
-                <Txt v="small" color="dim">{settings.target}h a month, {settings.margin}h margin</Txt>
-              </View>
-            </View>
-            <Field label="Name" icon="user" value={f.name} onChangeText={set('name')} placeholder="What should I call you?" style={{ marginBottom: 0 }} />
-          </Card>
+          <AccountCard account={account} settings={settings} onProfile={onProfile} onAuth={onAuth} />
         </FadeIn>
 
         <Card>
@@ -171,18 +277,43 @@ export default function Settings({ settings, onPatch, onData }) {
           <Field label="Weekday workload reminder" icon="bell" value={f.plannerAt} onChangeText={set('plannerAt')} keyboardType="numbers-and-punctuation" style={{ marginTop: 10, marginBottom: 0 }} />
         </Card>
 
+        <Card pad={4}>
+          <View style={{ paddingHorizontal: 12 }}>
+            {Object.entries(KINDS).map(([kind, K], i, all) => {
+              const p = soundPrefs(settings)[kind];
+              const snd = SOUNDS.find((x) => x.id === p.sound);
+              return (
+                <Row
+                  key={kind}
+                  icon={K.icon}
+                  tone={K.tone}
+                  title={`${K.label} sound`}
+                  sub={`${snd?.label ?? p.sound}${p.vibrate ? ', vibrates' : ''}`}
+                  onPress={() => setSoundKind(kind)}
+                  right={<Icon name="chevronR" size={18} color="faint" />}
+                  last={i === all.length - 1}
+                />
+              );
+            })}
+          </View>
+        </Card>
+
         <Card>
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
               <Icon name="pin" size={20} color="brand2" style={{ marginRight: 10 }} />
               <Txt v="title">Office detection</Txt>
             </View>
             <Pill label={settings.office ? 'Spot saved' : 'No spot yet'} tone={settings.office ? 'good' : 'faint'} icon={settings.office ? 'check' : 'info'} />
           </View>
-          <Txt v="small" color="dim" style={{ marginBottom: 12 }}>The phone notices when you reach or leave the office. "Ask me" sends a notification with a button, "Automatic" records the time for you.</Txt>
-          <Segmented options={GEO} value={settings.geo} onChange={(id) => onPatch({ geo: id })} style={{ marginBottom: 12 }} />
-          <Btn label={settings.office ? 'Move the office to where I stand' : 'Save my current spot as the office'} icon="nav" kind="soft" small onPress={saveOffice} />
+          <Row icon="radar" tone="brand2" title="Auto check in and out" sub={`Checks you in inside ${settings.radius} m of the office and out when you leave`} right={sw(settings.geo === 'auto', toggleAuto)} last={settings.geo === 'auto'} />
+          {settings.geo !== 'auto' ? <Row icon="bell" tone="warn" title="Only remind me" sub="A notification with a button when you arrive or leave" right={sw(settings.geo === 'prompt', (v) => onPatch({ geo: v ? 'prompt' : 'off' }))} last /> : null}
+          <View style={{ flexDirection: 'row', marginTop: 12 }}>
+            <Btn label={settings.office ? 'Move office' : 'Save my spot'} icon="nav" kind="soft" small onPress={saveOffice} style={{ flex: 1, marginRight: 10 }} />
+            <Btn label="Where am I?" icon="radar" kind="ghost" small onPress={whereAmI} style={{ flex: 1 }} />
+          </View>
           <Field label="Radius (metres)" value={f.radius} onChangeText={set('radius')} keyboardType="numeric" style={{ marginTop: 14, marginBottom: 0 }} />
+          <Txt v="small" color="faint" style={{ marginTop: 8 }}>Phones need at least 100 m to detect the edge reliably. It works with the screen off, so set location to "Allow all the time".</Txt>
         </Card>
 
         <Card>
@@ -206,8 +337,10 @@ export default function Settings({ settings, onPatch, onData }) {
         <Txt v="small" color="faint" align="center" style={{ marginTop: 18 }}>Hours Planner · everything stays on this phone except what you send to Groq.</Txt>
       </Screen>
 
+      {soundKind ? <SoundSheet kind={soundKind} settings={settings} onPatch={onPatch} onClose={() => setSoundKind(null)} /> : null}
+
       {dirty ? (
-        <View style={{ position: 'absolute', left: 18, right: 18, bottom: kb ? 12 : 104 }}>
+        <View style={{ position: 'absolute', left: 18, right: 18, bottom: kb ? 12 : insets.bottom + 98 }}>
           {msg ? <Notice tone="bad" text={msg} style={{ marginTop: 0, marginBottom: 8 }} /> : null}
           <Btn label="Save changes" icon="check" onPress={save} />
         </View>

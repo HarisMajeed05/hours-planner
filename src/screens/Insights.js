@@ -3,7 +3,7 @@ import { ScrollView, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Circle, Defs, Line as SvgLine, Path, Stop, LinearGradient as SvgGradient } from 'react-native-svg';
 import { MAX_H, dailySeries, fmtH, fmtMin, parseHM, parseKey, simulate, weeklyTotals } from '../logic';
-import { Card, Chip, FadeIn, Field, Icon, Notice, Screen, ScreenHeader, Stat, Txt, tint, useTheme } from '../ui';
+import { Card, Chip, FadeIn, Field, Icon, Notice, Screen, Stat, Txt, tint, useTheme } from '../ui';
 
 const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
@@ -174,8 +174,7 @@ export default function Insights({ days, settings, stats, now }) {
   const best = Math.max(0, ...weekly.map((w) => w.hours));
 
   return (
-    <Screen>
-      <ScreenHeader title="Insights" sub="Your last weeks at a glance" />
+    <Screen title="Insights" sub="Your last weeks at a glance">
 
       <FadeIn>
         <View style={{ flexDirection: 'row', marginBottom: 12 }}>

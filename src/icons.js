@@ -10,10 +10,12 @@ import Bot from 'lucide-react-native/icons/bot';
 import Briefcase from 'lucide-react-native/icons/briefcase';
 import Calendar from 'lucide-react-native/icons/calendar';
 import CalendarDays from 'lucide-react-native/icons/calendar-days';
+import Camera from 'lucide-react-native/icons/camera';
 import Check from 'lucide-react-native/icons/check';
 import CheckCircle from 'lucide-react-native/icons/circle-check';
 import ChevronL from 'lucide-react-native/icons/chevron-left';
 import ChevronR from 'lucide-react-native/icons/chevron-right';
+import Cloud from 'lucide-react-native/icons/cloud';
 import Clock from 'lucide-react-native/icons/clock';
 import Coffee from 'lucide-react-native/icons/coffee';
 import Database from 'lucide-react-native/icons/database';
@@ -27,6 +29,7 @@ import Gauge from 'lucide-react-native/icons/gauge';
 import History from 'lucide-react-native/icons/rotate-ccw-clock';
 import Home from 'lucide-react-native/icons/house';
 import Hourglass from 'lucide-react-native/icons/hourglass';
+import ImageIcon from 'lucide-react-native/icons/image';
 import Info from 'lucide-react-native/icons/info';
 import Key from 'lucide-react-native/icons/key-round';
 import Laptop from 'lucide-react-native/icons/laptop';
@@ -36,6 +39,7 @@ import Link from 'lucide-react-native/icons/link';
 import Lock from 'lucide-react-native/icons/lock';
 import LogIn from 'lucide-react-native/icons/log-in';
 import LogOut from 'lucide-react-native/icons/log-out';
+import Mail from 'lucide-react-native/icons/mail';
 import Message from 'lucide-react-native/icons/message-circle';
 import Mic from 'lucide-react-native/icons/mic';
 import MicOff from 'lucide-react-native/icons/mic-off';
@@ -45,8 +49,10 @@ import Palette from 'lucide-react-native/icons/palette';
 import Palm from 'lucide-react-native/icons/tree-palm';
 import Party from 'lucide-react-native/icons/party-popper';
 import Pause from 'lucide-react-native/icons/circle-pause';
+import Pencil from 'lucide-react-native/icons/pencil';
 import Phone from 'lucide-react-native/icons/smartphone';
 import Pin from 'lucide-react-native/icons/map-pin';
+import Play from 'lucide-react-native/icons/play';
 import Plus from 'lucide-react-native/icons/plus';
 import Radar from 'lucide-react-native/icons/radar';
 import Refresh from 'lucide-react-native/icons/refresh-cw';
@@ -75,11 +81,12 @@ import { useTheme } from './theme';
 const MAP = {
   activity: Activity, alarm: AlarmClock, arrowR: ArrowRight, bars: Bars, bell: Bell, bellRing: BellRing, bot: Bot,
   briefcase: Briefcase, calendar: Calendar, calendarDays: CalendarDays, check: Check, checkCircle: CheckCircle,
+  camera: Camera, cloud: Cloud, image: ImageIcon, mail: Mail, pencil: Pencil,
   chevronL: ChevronL, chevronR: ChevronR, clock: Clock, coffee: Coffee, database: Database, download: Download,
   eye: Eye, eyeOff: EyeOff, file: File, fingerprint: Fingerprint, flame: Flame, gauge: Gauge, history: History,
   home: Home, hourglass: Hourglass, info: Info, key: Key, laptop: Laptop, layers: Layers, bulb: Bulb, link: Link,
   lock: Lock, login: LogIn, logout: LogOut, chat: Message, mic: Mic, micOff: MicOff, moon: Moon, nav: Nav,
-  palette: Palette, palm: Palm, party: Party, pause: Pause, phone: Phone, pin: Pin, plus: Plus, radar: Radar,
+  palette: Palette, palm: Palm, party: Party, pause: Pause, phone: Phone, pin: Pin, play: Play, plus: Plus, radar: Radar,
   refresh: Refresh, rocket: Rocket, send: Send, settings: Settings, share: Share, shield: Shield, sparkles: Sparkles,
   sun: Sun, sunMedium: SunMedium, sunrise: Sunrise, sunset: Sunset, target: Target, timer: Timer, trash: Trash,
   trendDown: TrendDown, trendUp: TrendUp, upload: Upload, user: User, wand: Wand, x: X, zap: Zap,

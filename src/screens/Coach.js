@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Animated, Pressable, ScrollView, TextInput, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { askCoach } from '../groq';
 import { coachContext } from '../logic';
 import { Icon, Screen, Txt, tint, useKeyboard, useTheme } from '../ui';
@@ -32,6 +33,7 @@ function Typing() {
 export default function Coach({ days, settings, stats, now, chat, setChat }) {
   const { c } = useTheme();
   const kb = useKeyboard();
+  const insets = useSafeAreaInsets();
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
@@ -109,7 +111,7 @@ export default function Coach({ days, settings, stats, now, chat, setChat }) {
         {err ? <Txt v="small" color="warn" style={{ marginTop: 8 }}>{err}</Txt> : null}
       </ScrollView>
 
-      <View style={{ flexDirection: 'row', alignItems: 'flex-end', paddingHorizontal: 14, paddingTop: 8, paddingBottom: kb ? 12 : 108 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'flex-end', paddingHorizontal: 14, paddingTop: 8, paddingBottom: kb ? 12 : insets.bottom + 100 }}>
         <View style={{ flex: 1, backgroundColor: c.surface, borderRadius: 24, borderWidth: 1.5, borderColor: c.border, paddingHorizontal: 16, marginRight: 10 }}>
           <TextInput value={input} onChangeText={setInput} placeholder="Ask something" placeholderTextColor={c.faint} multiline style={{ color: c.text, fontFamily: 'Inter_500Medium', fontSize: 15, maxHeight: 110, paddingVertical: 13 }} />
         </View>
